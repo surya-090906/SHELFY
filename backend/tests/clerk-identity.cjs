@@ -1,0 +1,11 @@
+const {test}=require('node:test'),assert=require('node:assert/strict');
+const {createIdentityVerifier}=require('../src/services/clerkIdentity');
+process.env.CLERK_SECRET_KEY='sk_test_unit_test_only';
+process.env.CLERK_AUTHORIZED_PARTIES='http://localhost:5173';
+const claims={sub:'user_verified',sid:'sess_verified',azp:'http://localhost:5173'};
+const account={id:claims.sub,primaryEmailAddressId:'email_1',emailAddresses:[{id:'email_1',emailAddress:'OWNER@Example.com',verification:{status:'verified'}}]};
+const session={id:claims.sid,userId:claims.sub,status:'active'};
+const verifier=(changes={})=>createIdentityVerifier({verify:async(token,options)=>{assert.equal(token,'signed-token');assert.deepEqual(options.authorizedParties,['http://localhost:5173']);if(changes.invalid)throw Error('Bad signature');return {...claims,...changes.claims};},clientFactory:()=>({users:{getUser:async()=>({...account,...changes.account})},sessions:{getSession:async()=>({...session,...changes.session})}})});
+test('verified active email identity is normalized',async()=>assert.deepEqual(await verifier()('signed-token'),{userId:claims.sub,sessionId:claims.sid,email:'owner@example.com'}));
+for(const [label,changes]of Object.entries({signature:{invalid:true},origin:{claims:{azp:'https://foreign.example'}},revoked:{session:{status:'revoked'}},sessionOwner:{session:{userId:'user_other'}},accountOwner:{account:{id:'user_other'}},banned:{account:{banned:true}},unverified:{account:{emailAddresses:[{id:'email_1',emailAddress:'owner@example.com',verification:{status:'unverified'}}]}},phoneOnly:{account:{primaryEmailAddressId:null,emailAddresses:[],phoneNumbers:[{verification:{status:'verified'}}]}}}))test('rejects '+label,async()=>assert.rejects(()=>verifier(changes)('signed-token'),e=>e.statusCode===401));
+test('missing token fails',async()=>assert.rejects(()=>verifier()(undefined),e=>e.statusCode===401));

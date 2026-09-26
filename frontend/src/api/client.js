@@ -14,7 +14,7 @@ const api = axios.create({
 api.interceptors.request.use(
   (config) => {
     const token = localStorage.getItem('stocksense_access_token');
-    if (token) {
+    if (token && !config.url.includes('/auth/clerk/session')) {
       config.headers.Authorization = `Bearer ${token}`;
     }
     return config;
@@ -49,6 +49,7 @@ api.interceptors.response.use(
       !originalRequest._retry &&
       !originalRequest.url.includes('/auth/login') &&
       !originalRequest.url.includes('/auth/signup') &&
+      !originalRequest.url.includes('/auth/clerk/session') &&
       !originalRequest.url.includes('/auth/refresh')
     ) {
       if (isRefreshing) {

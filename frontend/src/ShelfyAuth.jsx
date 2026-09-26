@@ -4,7 +4,8 @@ import { Package, ChevronRight } from 'lucide-react';
 import api from './api/client';
 import { useAuthStore } from './store/useAuthStore';
 import { applyPreferences } from './preferences';
-function OtpInput({value, onChange}) {
+import AuthThemeToggle from './AuthThemeToggle';
+export function OtpInput({value, onChange}) {
   const {t}=useTranslation(), inputs=useRef([]);
   const enter=(index,text)=>{
     const digits=text.replace(/\D/g,'').slice(0,6);
@@ -86,7 +87,7 @@ export default function ShelfyAuth() {
       setBusy(false);
     }
   }
-  return <div className="ss-auth"><aside><div className="ss-logo"><Package />Shelfy<span>IMS</span></div><div><span className="ss-eyebrow">{t('EVERY ITEM. EVERY MOVEMENT.')}</span><h1>{t('Your inventory, in view.')}</h1><p>{t('Bring your warehouses, products and daily operations together in one place.')}</p><div className="ss-auth-art"><Package size={76} /><div><strong>{t('Stock in sync.')}</strong><span>{t('One company. One clear workspace.')}</span></div></div></div><small>{t('Built for the people who keep things moving.')}</small></aside><main><form onSubmit={submit}><span className="ss-eyebrow">{t('WELCOME TO SHELFY')}</span><h1>{t({
+  return <div className="ss-auth"><AuthThemeToggle /><aside><div className="ss-logo"><Package />Shelfy<span>IMS</span></div><div><span className="ss-eyebrow">{t('EVERY ITEM. EVERY MOVEMENT.')}</span><h1>{t('Your inventory, in view.')}</h1><p>{t('Bring your warehouses, products and daily operations together in one place.')}</p><div className="ss-auth-art"><Package size={76} /><div><strong>{t('Stock in sync.')}</strong><span>{t('One company. One clear workspace.')}</span></div></div></div><small>{t('Built for the people who keep things moving.')}</small></aside><main><form onSubmit={submit}><span className="ss-eyebrow">{t('WELCOME TO SHELFY')}</span><h1>{t({
             login: 'Welcome back',
             create: 'Create your company',
             join: 'Join your company',

@@ -15,3 +15,5 @@ input[type=range]{accent-color:var(--brand)}.ss-table tr.ss-move-in td{backgroun
 
 .ss-audit-row{cursor:pointer}.ss-diff{width:100%;table-layout:fixed;white-space:normal}.ss-diff pre{max-width:none;overflow-wrap:anywhere}.ss-diff th:first-child,.ss-diff td:first-child{width:20%}
 .ss-otp{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:10px}.ss-otp input{text-align:center;font-size:1.25rem;padding:12px 0}.ss-field legend{margin-bottom:10px}
+.ss-auth{position:relative}.ss-auth-theme{position:absolute;top:20px;right:24px;display:flex;align-items:center;gap:12px;z-index:1}.ss-auth-theme .ss-icon{display:inline-flex;align-items:center;justify-content:center;width:36px;height:36px;padding:0;border:0;color:var(--muted);background:transparent}.ss-auth-theme .ss-icon:hover{background:var(--subtle);color:var(--brand)}.ss-auth main{padding-top:90px}
+.ss-auth-setup{width:min(440px,100%);display:flex;flex-direction:column;gap:20px}.ss-auth-setup h1{font:700 1.75rem Manrope,sans-serif;color:var(--ink)}.ss-auth-setup p{line-height:1.7;color:var(--muted)}

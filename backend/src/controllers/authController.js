@@ -7,21 +7,22 @@ const fail=(message,statusCode=400)=>{throw Object.assign(new Error(message),{st
 const hash=s=>crypto.createHash('sha256').update(s).digest('hex');
 const strong=p=>typeof p==='string'&&/^(?=.*[a-z])(?=.*[A-Z])(?=.*[^A-Za-z0-9]).{8,}$/.test(p);
 const profile=async u=>{const {password_hash,token_version,...user}=u;return {...user,company:await raw.company.findUnique({where:{id:u.tenant_id}})};};
-const tokens=async u=>{
+const tokens=async (u,clerkSessionId)=>{
  const jti=crypto.randomUUID();await prisma.refreshSession.create({data:{id:jti,user_id:u.id,expires_at:new Date(Date.now()+604800000)}});
- const payload={userId:u.id,tenant_id:u.tenant_id,role:u.role,version:u.token_version};
+ const payload={userId:u.id,tenant_id:u.tenant_id,role:u.role,version:u.token_version,provider:clerkSessionId?'clerk':'local',...(clerkSessionId&&{clerkSessionId})};
  return {accessToken:jwt.sign(payload,accessSecret,{expiresIn:'15m'}),refreshToken:jwt.sign({...payload,jti},refreshSecret,{expiresIn:'7d'})};
 };
 const cookie=(res,t)=>res.cookie('refreshToken',t,{httpOnly:true,secure:process.env.COOKIE_SECURE==='true',sameSite:'lax',maxAge:604800000});
-const finish=async(user,res,status=200)=>{const t=await tokens(user);cookie(res,t.refreshToken);res.status(status).json({success:true,user:await profile(user),accessToken:t.accessToken});};
-const wrap=fn=>async(req,res,next)=>{try{await fn(req,res);}catch(e){next(e);}};
+const finish=async(user,res,status=200,clerkSessionId)=>{const t=await tokens(user,clerkSessionId);cookie(res,t.refreshToken);res.status(status).json({success:true,user:await profile(user),accessToken:t.accessToken});};
+const wrap=fn=>async(req,res,next)=>{try{await fn(req,res,next);}catch(e){next(e);}};
 const company=async code=>raw.company.findUnique({where:{short_code:String(code||'').trim().toUpperCase()}});
 const signup=wrap(async(req,res)=>{
  const b=req.body;
+ if(req.clerkIdentity)b.email=req.clerkIdentity.email;
  if(!/^[A-Za-z0-9_]{6,12}$/.test(b.login_id||''))fail('Login Id must be 6–12 letters, digits or underscores');
  if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(b.email||''))fail('Enter a valid Email Id');
- if(!strong(b.password)||b.password!==b.confirm_password)fail('Passwords must match and contain uppercase, lowercase and a special character, with at least 8 characters');
- const password_hash=await bcrypt.hash(b.password,10);
+ if(!req.clerkIdentity&&(!strong(b.password)||b.password!==b.confirm_password))fail('Passwords must match and contain uppercase, lowercase and a special character, with at least 8 characters');
+ const password_hash=await bcrypt.hash(req.clerkIdentity?crypto.randomBytes(32).toString('base64url'):b.password,10);
  let user;
  await raw.$transaction(async tx=>{
   let tenant,role;
@@ -37,7 +38,7 @@ const signup=wrap(async(req,res)=>{
    tenant=await tx.company.create({data:{name:b.company_name.trim(),short_code:b.company_code.toUpperCase()}});role='manager';
    await tx.auditLog.create({data:{tenant_id:tenant.id,action:'company.create',entity_type:'company',entity_id:String(tenant.id),after:tenant,ip_address:req.ip}});
   }
-  user=await tx.user.create({data:{tenant_id:tenant.id,name:b.name?.trim()||b.login_id,login_id:b.login_id.toLowerCase(),email:b.email.trim().toLowerCase(),password_hash,role}});
+  user=await tx.user.create({data:{tenant_id:tenant.id,name:b.name?.trim()||b.login_id,login_id:b.login_id.toLowerCase(),email:b.email.trim().toLowerCase(),password_hash,role,clerk_user_id:req.clerkIdentity?.userId||null}});
   const {password_hash:secret,...safe}=user;
   await tx.auditLog.create({data:{tenant_id:tenant.id,user_id:user.id,action:b.invite_code?'user.join':'user.create',entity_type:'user',entity_id:String(user.id),after:JSON.parse(JSON.stringify(safe)),ip_address:req.ip}});
   if(!b.invite_code){
@@ -47,7 +48,7 @@ const signup=wrap(async(req,res)=>{
    for(const [entity,row]of [['warehouse',warehouse],['location',location],['category',category]])await tx.auditLog.create({data:{tenant_id:tenant.id,user_id:user.id,action:entity+'.create',entity_type:entity,entity_id:String(row.id),after:JSON.parse(JSON.stringify(row)),ip_address:req.ip}});
   }
  });
- await run({tenant_id:user.tenant_id,user_id:user.id,ip_address:req.ip},()=>finish(user,res,201));
+ await run({tenant_id:user.tenant_id,user_id:user.id,ip_address:req.ip},()=>finish(user,res,201,req.clerkIdentity?.sessionId));
 });
 const login=wrap(async(req,res)=>{
  const t=await company(req.body.company_code);const id=String(req.body.login_id||'').trim().toLowerCase();
@@ -57,11 +58,13 @@ const login=wrap(async(req,res)=>{
 });
 const refresh=wrap(async(req,res)=>{
  let d;try{d=jwt.verify(req.cookies.refreshToken,refreshSecret);}catch{fail('Invalid or expired refresh token',401);}
+ if(require('../config/authProvider').clerkEnabled()&&d.provider!=='clerk')fail('Email verification required',401);
  const user=await raw.user.findFirst({where:{id:d.userId,tenant_id:d.tenant_id||-1}});
  if(!user||user.token_version!==d.version)fail('Invalid or expired refresh token',401);
+ if(d.provider==='clerk')await require('../services/clerkIdentity').assertSession(d.clerkSessionId,user.clerk_user_id);
  await run({tenant_id:user.tenant_id,user_id:user.id},async()=>{
   const consumed=await prisma.refreshSession.updateMany({where:{id:d.jti,user_id:user.id,revoked:false,expires_at:{gt:new Date()}},data:{revoked:true}});
-  if(!consumed.count)fail('Invalid or expired refresh token',401);await finish(user,res);
+  if(!consumed.count)fail('Invalid or expired refresh token',401);await finish(user,res,200,d.clerkSessionId);
  });
 });
 const forgotPassword=wrap(async(req,res)=>{
@@ -94,4 +97,29 @@ const logout=wrap(async(req,res)=>{
  res.clearCookie('refreshToken',{httpOnly:true,secure:process.env.COOKIE_SECURE==='true',sameSite:'lax'});res.json({success:true});
 });
 const getMe=(req,res)=>res.json({success:true,user:req.user});
-module.exports={signup,login,refresh,forgotPassword,resetPassword,logout,getMe,profile,strong,fail};
+const clerkSession=wrap(async(req,res,next)=>{
+ const identity=await require('../services/clerkIdentity').verifyEmailIdentity(req.headers.authorization?.replace(/^Bearer\s+/i,''));
+ if(req.body.intent==='create'||req.body.intent==='join'){
+  if(req.body.intent==='join'&&!req.body.invite_code)fail('Invitation code is required');
+  if(req.body.intent==='create'&&req.body.invite_code)fail('Invalid invitation');
+  req.clerkIdentity=identity;
+  return signup(req,res,next);
+ }
+ if(req.body.intent&&req.body.intent!=='login')fail('Invalid sign-in request');
+ const tenant=await company(req.body.company_code);
+ const user=tenant&&await raw.user.findFirst({where:{tenant_id:tenant.id,email:identity.email}});
+ if(!user||user.clerk_user_id&&user.clerk_user_id!==identity.userId)fail('No matching account in this company. Use an invitation to join.',403);
+ await run({tenant_id:tenant.id,user_id:user.id,ip_address:req.ip},async()=>{
+  // Bind existing local memberships only after Clerk proves ownership of their email.
+  const linked=await prisma.$transaction(async tx=>{
+   await tx.$executeRaw`SELECT pg_advisory_xact_lock(731943, ${tenant.id}::integer)`;
+   const currentUser=await tx.user.findUnique({where:{id:user.id}});
+   if(currentUser.clerk_user_id&&currentUser.clerk_user_id!==identity.userId)fail('Email verification required',401);
+   if(currentUser.clerk_user_id)return currentUser;
+   await tx.refreshSession.updateMany({where:{user_id:user.id},data:{revoked:true}});
+   return tx.user.update({where:{id:user.id},data:{clerk_user_id:identity.userId,token_version:{increment:1}}});
+  });
+  await finish(linked,res,200,identity.sessionId);
+ });
+});
+module.exports={signup,login,refresh,forgotPassword,resetPassword,logout,getMe,profile,strong,fail,clerkSession};

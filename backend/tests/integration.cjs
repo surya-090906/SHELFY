@@ -3,7 +3,9 @@ const assert = require('node:assert/strict');
 const { execFileSync } = require('node:child_process');
 const schema = `stocksense_test_${Date.now()}`;
 const url = new URL(process.env.DATABASE_URL); url.searchParams.set('schema', schema); process.env.DATABASE_URL = url.toString();
+const directUrl = new URL(process.env.DIRECT_URL || process.env.DATABASE_URL); directUrl.searchParams.set('schema', schema); process.env.DIRECT_URL = directUrl.toString();
 process.env.NODE_ENV = 'test';
+process.env.AUTH_PROVIDER = 'local';
 const prisma = require('../src/config/database').$raw;
 let server, socketServer, liveSocket, checks = 0;
 const check = (value, label) => { assert.ok(value, label); checks++; console.log(`PASS ${label}`); };
@@ -184,6 +186,36 @@ async function isolation(call,token,tenant){
  const socket= new WebSocket('ws://127.0.0.1:'+server.address().port+'/socket.io/?EIO=4&transport=websocket');let leaked=false;
  const connected=new Promise((resolve,reject)=>{const timer=setTimeout(()=>reject(new Error('Socket B timeout')),5000);socket.addEventListener('message',e=>{const data=String(e.data);if(data.startsWith('0'))socket.send('40'+JSON.stringify({token:other}));if(data.startsWith('40')){clearTimeout(timer);resolve();}if(data==='2')socket.send('3');if(data.startsWith('42')&&JSON.parse(data.slice(2))[0]==='isolation:probe')leaked=true;});});
  await connected;await run({tenant_id:tenant},()=>require('../src/services/socketService').emitEvent('isolation:probe',{secret:'Company A'}));await new Promise(r=>setTimeout(r,150));socket.close();check(!leaked,'Socket.io excludes other company rooms');
+ // Provider calls are mocked here; the verifier's trust checks have their own unit suite.
+ process.env.AUTH_PROVIDER='clerk';
+ const identityService=require('../src/services/clerkIdentity');
+ const verifyOriginal=identityService.verifyEmailIdentity,sessionOriginal=identityService.assertSession;
+ const managerAccount=await prisma.user.findFirst({where:{tenant_id:tenant,login_id:'manager'}});
+ let verifiedEmail=managerAccount.email;
+ identityService.verifyEmailIdentity=async bearer=>{if(bearer!=='test-clerk-token')throw Object.assign(new Error('Invalid verification'),{statusCode:401});return {userId:'user_test_clerk',sessionId:'sess_test_clerk',email:verifiedEmail};};
+ identityService.assertSession=async(id,userId)=>{assert.equal(id,'sess_test_clerk');assert.equal(userId,'user_test_clerk');};
+ check((await call('/auth/login','POST',{company_code:'SHELFY',login_id:'manager',password:'Manager@123'})).status===410,'Clerk mode disables password login');
+ check((await call('/auth/forgot-password','POST',{email:managerAccount.email})).status===410,'Clerk mode disables custom OTP delivery');
+ check((await call('/products','GET',null,token)).status===401,'Clerk mode rejects legacy access tokens');
+ check((await call('/auth/clerk/session','POST',{company_code:'SHELFY'},'forged')).status===401,'Clerk exchange rejects unverified requests');
+ const clerkLogin=await call('/auth/clerk/session','POST',{company_code:'SHELFY',role:'staff',tenant_id:tenantB},'test-clerk-token');
+ check(clerkLogin.status===200&&clerkLogin.body.user.tenant_id===tenant&&clerkLogin.body.user.role==='manager','Clerk login preserves database company and role');
+ check((await prisma.user.findUnique({where:{id:managerAccount.id}})).clerk_user_id==='user_test_clerk','verified email links existing account');
+ check((await call('/products','GET',null,clerkLogin.body.accessToken)).status===200,'Clerk exchanged token accesses scoped inventory');
+ check((await call('/auth/clerk/session','POST',{company_code:'UNKNOWN'},'test-clerk-token')).status===403,'Clerk cannot enter an unknown company');
+ check((await call('/auth/refresh','POST',{},null,clerkLogin.cookie)).status===200,'Clerk refresh rechecks provider session');
+ check((await call('/settings/password','POST',{},clerkLogin.body.accessToken)).status===409,'Clerk accounts cannot set a local password');
+ const clerkInvite=await call('/company/invites','POST',{email:'newclerk@example.com',role:'staff'},clerkLogin.body.accessToken);
+ verifiedEmail='wrong@example.com';
+ check((await call('/auth/clerk/session','POST',{intent:'join',invite_code:clerkInvite.body.data.code,login_id:'clerk01',email:'newclerk@example.com'},'test-clerk-token')).status===400,'invitation email uses verified identity, not client email');
+ verifiedEmail='newclerk@example.com';
+ const duplicateClerkJoin=await call('/auth/clerk/session','POST',{intent:'join',invite_code:clerkInvite.body.data.code,login_id:'clerk01',role:'manager',tenant_id:tenantB},'test-clerk-token');
+ // Use a distinct Clerk identity for this new user in the same company.
+ check(duplicateClerkJoin.status===409,'one Clerk identity cannot be duplicated within a company');
+ identityService.verifyEmailIdentity=async()=>({userId:'user_new_clerk',sessionId:'sess_new_clerk',email:verifiedEmail});
+ const joinedNew=await call('/auth/clerk/session','POST',{intent:'join',invite_code:clerkInvite.body.data.code,login_id:'clerk01',role:'manager',tenant_id:tenantB},'test-clerk-token');
+ check(joinedNew.status===201&&joinedNew.body.user.role==='staff'&&joinedNew.body.user.tenant_id===tenant&&joinedNew.body.user.theme==='light','Clerk invitation signup derives role and defaults to light');
+ identityService.verifyEmailIdentity=verifyOriginal;identityService.assertSession=sessionOriginal;
 }
 
 run().catch(e => { console.error(e); process.exitCode = 1; }).finally(async () => {

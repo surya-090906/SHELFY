@@ -10,6 +10,7 @@
     "check:locales": "node scripts/check-locales.cjs"
   },
   "dependencies": {
+    "@clerk/react": "^6.17.2",
     "axios": "^1.7.9",
     "clsx": "^2.1.1",
     "i18next": "^26.4.2",

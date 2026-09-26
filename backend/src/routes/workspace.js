@@ -12,6 +12,7 @@ router.put('/settings',wrap(async(req,res)=>{
  const u=await prisma.user.update({where:{id:req.user.id},data});res.json({success:true,user:await profile(u)});
 }));
 router.post('/settings/password',wrap(async(req,res)=>{
+ if(require('../config/authProvider').clerkEnabled())fail('Your account uses email verification instead of a password.',409);
  const b=req.body,u=await prisma.user.findUnique({where:{id:req.user.id}});
  if(!strong(b.new_password)||b.new_password!==b.confirm_password)fail('Passwords must match and contain uppercase, lowercase and a special character, with at least 8 characters');
  if(!await bcrypt.compare(String(b.current_password||''),u.password_hash))fail('Current password is incorrect');

@@ -6,3 +6,4 @@
 !**/.env.example
 *.log
 artifacts/
+**/.next/

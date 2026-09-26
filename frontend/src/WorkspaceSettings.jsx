@@ -5,8 +5,9 @@ import { useTranslation } from 'react-i18next';
 import { Globe, Sun, Moon, Monitor, Copy } from 'lucide-react';
 import api from './api/client';
 import { useAuthStore } from './store/useAuthStore';
-import { applyPreferences } from './preferences';
-export const languages = [['en', 'English'], ['hi', 'हिन्दी'], ['ta', 'தமிழ்'], ['te', 'తెలుగు'], ['ml', 'മലയാളം'], ['kn', 'ಕನ್ನಡ']];
+import { applyPreferences, languages } from './preferences';
+import {clerkEnabled} from './authConfig';
+export {languages} from './preferences';
 export function usePreferences() {
   const {
     i18n
@@ -103,7 +104,7 @@ export function WorkspaceSettings({
         perform(() => save(form));
       }}><h2>{t('Profile')}</h2><Input label="Name" required value={form.name} onChange={e => setForm({
           name: e.target.value
-        })} /><Input label="Email Id" value={user.email} readOnly /><Input label="Login Id" value={user.login_id} readOnly /><Input label="Role" value={t(user.role)} readOnly /><button className="ss-primary" disabled={busy}>{t('Save profile')}</button></form><form className="ss-panel ss-form" onSubmit={e => {
+        })} /><Input label="Email Id" value={user.email} readOnly /><Input label="Login Id" value={user.login_id} readOnly /><Input label="Role" value={t(user.role)} readOnly /><button className="ss-primary" disabled={busy}>{t('Save profile')}</button></form>{clerkEnabled?<section className="ss-panel ss-form"><h2>{t('Email verification')}</h2><p>{t('Your account uses email verification instead of a password.')}</p></section>:<form className="ss-panel ss-form" onSubmit={e => {
         e.preventDefault();
         perform(async () => {
           await api.post('/settings/password', password);
@@ -112,7 +113,7 @@ export function WorkspaceSettings({
       }}><h2>{t('Change password')}</h2>{[['current_password', 'Current password'], ['new_password', 'New Password'], ['confirm_password', 'Re-Enter Password']].map(([id, label]) => <Input key={id} label={label} type="password" required minLength={id === 'current_password' ? undefined : 8} autoComplete={id === 'current_password' ? 'current-password' : 'new-password'} value={password[id] || ''} onChange={e => setPassword(p => ({
           ...p,
           [id]: e.target.value
-        }))} />)}<p>{t('Changing your password signs you out of all sessions.')}</p><button className="ss-primary" disabled={busy}>{t('Update password')}</button></form></div>}
+        }))} />)}<p>{t('Changing your password signs you out of all sessions.')}</p><button className="ss-primary" disabled={busy}>{t('Update password')}</button></form>}</div>}
  {tab === 'language' && <section className="ss-panel ss-form"><h2>{t('Choose your language')}</h2><p>{t('Your language follows you across devices.')}</p><div className="ss-language-grid">{languages.map(([id, label]) => <button key={id} className={`ss-choice ${user.language === id ? 'selected' : ''}`} aria-pressed={user.language === id} disabled={busy} onClick={() => perform(() => save({
           language: id
         }))}><Globe size={21} /><strong lang={id}>{label}</strong></button>)}</div></section>}

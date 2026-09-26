@@ -1,6 +1,7 @@
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
 }
 
 generator client {
@@ -36,6 +37,7 @@ model User {
   login_id      String
   token_version Int             @default(0)
   password_hash String
+  clerk_user_id String?
   role          Role            @default(staff)
   created_at    DateTime        @default(now())
   updated_at    DateTime        @updatedAt
@@ -50,12 +52,13 @@ model User {
 
   @@map("users")
   language String @default("en")
-  theme String @default("system")
+  theme String @default("light")
   font_scale Int @default(100)
   @@index([tenant_id])
   @@unique([tenant_id, id])
   @@unique([tenant_id, email])
   @@unique([tenant_id, login_id])
+  @@unique([tenant_id, clerk_user_id])
   tenant Company @relation(fields:[tenant_id],references:[id],onDelete:Restrict,map:"users_tenant_fk")
   invitations Invite[]
   auditLogs AuditLog[]

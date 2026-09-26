@@ -25,6 +25,10 @@ services:
       NODE_ENV: production
       PORT: 5000
       DATABASE_URL: postgresql://stocksense:${POSTGRES_PASSWORD:-stocksense_local_demo}@postgres:5432/stocksense?schema=public
+      DIRECT_URL: postgresql://stocksense:${POSTGRES_PASSWORD:-stocksense_local_demo}@postgres:5432/stocksense?schema=public
+      AUTH_PROVIDER: ${AUTH_PROVIDER:-clerk}
+      CLERK_SECRET_KEY: ${CLERK_SECRET_KEY:-}
+      CLERK_AUTHORIZED_PARTIES: http://localhost:8080
       REDIS_URL: redis://redis:6379
       JWT_SECRET: ${JWT_SECRET:-local_demo_access_secret_change_before_deployment}
       JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:-local_demo_refresh_secret_change_before_deployment}
@@ -46,7 +50,11 @@ services:
       timeout: 3s
       retries: 20
   frontend:
-    build: ./frontend
+    build:
+      context: ./frontend
+      args:
+        VITE_AUTH_PROVIDER: ${AUTH_PROVIDER:-clerk}
+        VITE_CLERK_PUBLISHABLE_KEY: ${VITE_CLERK_PUBLISHABLE_KEY:-}
     ports:
       - "8080:80"
     depends_on:

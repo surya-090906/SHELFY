@@ -1,5 +1,7 @@
 # Shelfy — Multi-Tenant Inventory Management
 
+**Current authentication:** Clerk email OTP is the default; there is no mobile verification. Configure Clerk keys before signing in. Login now has Light/Dark controls and defaults to Light. See [Supabase and Clerk setup](docs/SUPABASE-CLERK.md) for configuration, database migration and validation status. The local password/SMTP behavior described below is available only in explicit `local` compatibility mode.
+
 React, Tailwind CSS, Zustand, i18next, Express, Prisma/PostgreSQL, Redis, Socket.io and Nodemailer. Each company has independent users, products, warehouses, operations, ledger and audit history. Stock is calculated from an immutable ledger rather than a mutable product quantity.
 
 ## Run
@@ -10,7 +12,7 @@ docker compose up --build
 
 Open http://localhost:8080. Compose starts PostgreSQL and Redis, deploys migrations, seeds demo companies and serves the frontend through Nginx. Existing data is preserved. Docker was unavailable in the implementation environment, so a Compose run has not been verified there.
 
-Both demo company codes, `SHELFY` and `NOVA`, support these accounts:
+In explicit local compatibility mode, both demo company codes, `SHELFY` and `NOVA`, support these accounts:
 
 | Role | Login ID | Password |
 |---|---|---|
@@ -100,19 +102,11 @@ Editable Figma blueprints cover 15 screens in light, dark and 130% typography va
 
 ## Authentication and email
 
-Sign in using company code, login ID/email and password. Signup requires a 6–12 character login ID and matching passwords of at least eight characters with uppercase, lowercase and a special character. Access JWTs expire after 15 minutes; rotating HTTP-only refresh cookies last seven days. Password changes/resets revoke all sessions. Logout revokes its refresh session; already issued access tokens expire normally.
+Clerk handles email OTP sign-in and signup. Mobile numbers, SMS verification and local passwords are not used in the default configuration. Configure the backend secret key and frontend publishable key from the same Clerk application using the [setup guide](docs/SUPABASE-CLERK.md).
 
-Recovery requires company code and email. OTPs are hashed, rate limited, single use and expire after five minutes. Configure real email delivery:
+The backend verifies Clerk's token, allowed frontend origin, active session and verified primary email before selecting a company membership. Roles and invitation restrictions remain server-controlled. Access tokens last 15 minutes, rotating refresh sessions last seven days, and refresh checks the Clerk session again. Existing demo credentials and SMTP recovery apply only in explicit local compatibility mode.
 
-```env
-SMTP_HOST=smtp.example.com
-SMTP_PORT=587
-SMTP_USER=your-user
-SMTP_PASS=your-password
-SMTP_FROM=Shelfy <noreply@example.com>
-```
-
-Development without SMTP uses a console mailbox. Production recovery requires SMTP; real SMTP delivery has not been tested. Use `COOKIE_SECURE=true` behind HTTPS and replace demo/database credentials and JWT secrets before public hosting.
+New companies and users default to Light. Login visitors can switch between Light and Dark; signed-in account preferences remain separate.
 
 ## API
 
@@ -120,9 +114,10 @@ Base path `/api`. Protected requests require `Authorization: Bearer <accessToken
 
 | Endpoints | Purpose |
 |---|---|
-| `POST /auth/signup` | New company: `company_name`, `company_code`, account fields; join: `invite_code`, account fields |
-| `POST /auth/login` | `company_code`, `login_id`, `password` |
-| `POST /auth/forgot-password`, `/auth/reset-password` | Company-scoped OTP recovery |
+| `POST /auth/clerk/session` | Verified Clerk bearer token plus `intent` (`login`, `create`, `join`) and company/invitation fields |
+| `POST /auth/signup` (local compatibility) | New company: `company_name`, `company_code`, account fields; join: `invite_code`, account fields |
+| `POST /auth/login` (local compatibility) | `company_code`, `login_id`, `password` |
+| `POST /auth/forgot-password`, `/auth/reset-password` (local compatibility) | Company-scoped OTP recovery |
 | `POST /auth/refresh`, `/auth/logout`; `GET /auth/me` | Sessions |
 | `GET/PUT /settings`; `POST /settings/password` | Personal profile/preferences/password |
 | `GET/PUT /company`; `GET /company/users` | Manager administration |
@@ -143,4 +138,4 @@ npm run check:locales
 npm run build
 ```
 
-The integration suite creates/removes an isolated PostgreSQL schema; the database user needs schema creation permission. It passed 90 checks for workflows, concurrency, authentication, invitations, tenant isolation, authorization, audit rollback, caches and sockets. All six language dictionaries passed key/interpolation checks and the production frontend build passed. Browser checks cover manager/staff visibility, audit expansion, translated navigation, appearance controls and preference persistence.
+The integration suite creates/removes an isolated PostgreSQL schema; the database user needs schema creation permission. It passed 103 integration checks plus 10 Clerk identity unit tests for workflows, concurrency, authentication, invitations, tenant isolation, authorization, audit rollback, caches and sockets. All six language dictionaries passed key/interpolation checks and the production frontend build passed. Browser checks cover manager/staff visibility, audit expansion, translated navigation, appearance controls and preference persistence. The new login Light/Dark switch was verified across reloads. Clerk provider calls are mocked in automated tests; live email delivery and Supabase import await service credentials.

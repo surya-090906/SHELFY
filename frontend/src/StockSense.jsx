@@ -5,7 +5,7 @@ import { Package, LayoutDashboard, ArrowDownLeft, ArrowUpRight, ArrowRightLeft, 
 import api from './api/client';
 import { useAuthStore } from './store/useAuthStore';
 import './stocksense.css';
-import Auth from './ShelfyAuth';
+import Auth from './AuthEntry';
 import { WorkspaceSettings, AuditPage, QuickPreferences } from './WorkspaceSettings';
 import { applyPreferences } from './preferences';
 import { useTranslation } from 'react-i18next';

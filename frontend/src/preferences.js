@@ -1,4 +1,5 @@
-export const defaultPreferences={language:'en',theme:'system',font_scale:100};
+export const defaultPreferences={language:'en',theme:'light',font_scale:100};
+export const languages=[['en','English'],['hi','हिन्दी'],['ta','தமிழ்'],['te','తెలుగు'],['ml','മലയാളം'],['kn','ಕನ್ನಡ']];
 export function applyPreferences(user={}){
  const p={...defaultPreferences,...user};
  const dark=p.theme==='dark'||p.theme==='system'&&matchMedia('(prefers-color-scheme: dark)').matches;
