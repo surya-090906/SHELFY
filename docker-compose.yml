@@ -49,6 +49,32 @@ services:
       interval: 5s
       timeout: 3s
       retries: 20
+  backend-fastapi:
+    build: ./backend-python
+    ports:
+      - "8000:8000"
+    environment:
+      PORT: 8000
+      ENVIRONMENT: production
+      DATABASE_URL: postgresql://stocksense:${POSTGRES_PASSWORD:-stocksense_local_demo}@postgres:5432/stocksense
+      REDIS_URL: redis://redis:6379
+      JWT_SECRET: ${JWT_SECRET:-shelfy_fastapi_jwt_secret_key_super_secure_999!}
+      SMTP_HOST: ${SMTP_HOST:-smtp.gmail.com}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASS: ${SMTP_PASS:-}
+      SMTP_FROM: ${SMTP_FROM:-Shelfy Security <noreply@shelfy.local>}
+      CORS_ORIGINS: http://localhost:8080,http://localhost:5173,http://localhost:3000
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
   frontend:
     build:
       context: ./frontend
