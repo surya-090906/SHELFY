@@ -18,11 +18,18 @@ export default function Navbar({ onNavigate, currentTab }) {
             <Box className="w-5 h-5 text-white stroke-[2.5]" />
           </div>
           <div>
-            <span className="text-xl font-bold bg-gradient-to-r from-white via-slate-100 to-slate-400 bg-clip-text text-transparent">
-              StockSense
-            </span>
-            <span className="hidden sm:inline-block ml-2 text-xs font-mono px-2 py-0.5 rounded bg-brand-500/10 border border-brand-500/20 text-brand-400">
-              IMS v1.0
+            <div className="flex items-center space-x-2">
+              <span className="text-xl font-bold bg-gradient-to-r from-white via-slate-100 to-slate-400 bg-clip-text text-transparent">
+                Shelfy
+              </span>
+              {user?.company_code && (
+                <span className="hidden sm:inline-block text-xs font-mono font-semibold px-2 py-0.5 rounded bg-brand-500/20 border border-brand-500/30 text-brand-300">
+                  {user.company_code}
+                </span>
+              )}
+            </div>
+            <span className="text-[10px] text-slate-400 font-medium block">
+              Multi-Tenant IMS
             </span>
           </div>
         </div>

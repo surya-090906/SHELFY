@@ -36,9 +36,9 @@ export default function Login({ onNavigate }) {
           <div className="inline-flex w-14 h-14 rounded-2xl bg-gradient-to-tr from-brand-600 to-cyan-400 items-center justify-center shadow-xl shadow-brand-500/25 mb-4">
             <Box className="w-8 h-8 text-white stroke-[2.5]" />
           </div>
-          <h1 className="text-3xl font-extrabold text-white tracking-tight">StockSense IMS</h1>
+          <h1 className="text-3xl font-extrabold text-white tracking-tight">Shelfy IMS</h1>
           <p className="text-sm text-slate-400 mt-2">
-            Enterprise Inventory & Warehouse Management System
+            Multi-Tenant Enterprise Inventory & Warehouse Management
           </p>
         </div>
 

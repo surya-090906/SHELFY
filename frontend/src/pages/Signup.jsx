@@ -27,7 +27,7 @@ export default function Signup({ onNavigate }) {
             <Box className="w-8 h-8 text-white stroke-[2.5]" />
           </div>
           <h1 className="text-3xl font-extrabold text-white tracking-tight">Create Account</h1>
-          <p className="text-sm text-slate-400 mt-2">Join StockSense IMS</p>
+          <p className="text-sm text-slate-400 mt-2">Join Shelfy IMS</p>
         </div>
 
         <div className="glass-panel p-8 rounded-3xl border border-slate-800 shadow-2xl">
