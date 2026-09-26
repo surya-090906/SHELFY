@@ -1,0 +1,436 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum Role {
+  manager
+  staff
+}
+
+enum DocumentStatus {
+  draft
+  waiting
+  ready
+  done
+  canceled
+}
+
+enum MovementType {
+  receipt
+  delivery
+  transfer
+  adjustment
+}
+
+model User {
+  tenant_id Int
+
+  id            Int             @id @default(autoincrement())
+  name          String
+  email         String
+  login_id      String
+  token_version Int             @default(0)
+  password_hash String
+  role          Role            @default(staff)
+  created_at    DateTime        @default(now())
+  updated_at    DateTime        @updatedAt
+
+  receipts       Receipt[]
+  deliveryOrders DeliveryOrder[]
+  transfers      Transfer[]
+  adjustments    Adjustment[]
+  stockLedger    StockLedger[]
+  otpCodes       OtpCode[]
+  sessions       RefreshSession[]
+
+  @@map("users")
+  language String @default("en")
+  theme String @default("system")
+  font_scale Int @default(100)
+  @@index([tenant_id])
+  @@unique([tenant_id, id])
+  @@unique([tenant_id, email])
+  @@unique([tenant_id, login_id])
+  tenant Company @relation(fields:[tenant_id],references:[id],onDelete:Restrict,map:"users_tenant_fk")
+  invitations Invite[]
+  auditLogs AuditLog[]
+}
+
+model Category {
+  tenant_id Int
+
+  id         Int       @id @default(autoincrement())
+  name       String
+  products   Product[]
+
+  @@map("categories")
+  @@index([tenant_id])
+  @@unique([tenant_id, id])
+  @@unique([tenant_id, name])
+  tenant Company @relation(fields:[tenant_id],references:[id],onDelete:Restrict,map:"categories_tenant_fk")
+}
+
+model Product {
+  tenant_id Int
+
+  id                Int            @id @default(autoincrement())
+  name              String
+  sku               String
+  per_unit_cost     Float          @default(0)
+  category_id       Int
+  category          Category       @relation(fields: [tenant_id, category_id], references: [tenant_id, id], onDelete: Restrict, map: "products_category_id_tenant_fk")
+  unit_of_measure   String         @default("units")
+  reorder_threshold Int            @default(10)
+  created_at        DateTime       @default(now())
+  updated_at        DateTime       @updatedAt
+
+  stockLedger       StockLedger[]
+  receiptItems      ReceiptItem[]
+  deliveryItems     DeliveryItem[]
+  transferItems     TransferItem[]
+  adjustments       Adjustment[]
+
+  @@map("products")
+  @@index([tenant_id])
+  @@unique([tenant_id, id])
+  @@unique([tenant_id, sku])
+  tenant Company @relation(fields:[tenant_id],references:[id],onDelete:Restrict,map:"products_tenant_fk")
+}
+
+model Warehouse {
+  tenant_id Int
+
+  id         Int        @id @default(autoincrement())
+  name       String
+  short_code String
+  address    String     @default("")
+  locations  Location[]
+  receipts   Receipt[]
+  deliveries DeliveryOrder[]
+
+  @@map("warehouses")
+  @@index([tenant_id])
+  @@unique([tenant_id, id])
+  @@unique([tenant_id, name])
+  @@unique([tenant_id, short_code])
+  tenant Company @relation(fields:[tenant_id],references:[id],onDelete:Restrict,map:"warehouses_tenant_fk")
+}
+
+model Location {
+  tenant_id Int
+
+  id                 Int            @id @default(autoincrement())
+  warehouse_id       Int
+  warehouse          Warehouse      @relation(fields: [tenant_id, warehouse_id], references: [tenant_id, id], onDelete: Restrict, map: "locations_warehouse_id_tenant_fk")
+  name               String
+  short_code         String         @default("Stock")
+  parent_location_id Int?
+  parent             Location?      @relation("LocationHierarchy", fields: [tenant_id, parent_location_id], references: [tenant_id, id], onDelete: Restrict, map: "locations_parent_location_id_tenant_fk")
+  children           Location[]     @relation("LocationHierarchy")
+
+  stockLedger        StockLedger[]
+  receiptItems       ReceiptItem[]
+  deliveryItems      DeliveryItem[]
+  transfersFrom      Transfer[]     @relation("TransferFrom")
+  transfersTo        Transfer[]     @relation("TransferTo")
+  adjustments        Adjustment[]
+
+  @@map("locations")
+  @@index([tenant_id])
+  @@unique([tenant_id, id])
+
+  tenant Company @relation(fields:[tenant_id],references:[id],onDelete:Restrict,map:"locations_tenant_fk")
+}
+
+model StockLedger {
+  tenant_id Int
+
+  id              Int          @id @default(autoincrement())
+  product_id      Int
+  product         Product      @relation(fields: [tenant_id, product_id], references: [tenant_id, id], onDelete: Restrict, map: "stock_ledger_product_id_tenant_fk")
+  location_id     Int
+  location        Location     @relation(fields: [tenant_id, location_id], references: [tenant_id, id], onDelete: Restrict, map: "stock_ledger_location_id_tenant_fk")
+  quantity_delta  Float
+  movement_type   MovementType
+  reference_id    Int?
+  reference_type  String?
+  created_by      Int?
+  creator         User?        @relation(fields: [tenant_id, created_by], references: [tenant_id, id], onDelete: Restrict, map: "stock_ledger_created_by_tenant_fk")
+  created_at      DateTime     @default(now())
+
+  @@index([product_id])
+  @@index([location_id])
+  @@index([movement_type])
+  @@index([created_at])
+  @@map("stock_ledger")
+  @@index([tenant_id])
+  @@unique([tenant_id, id])
+
+  tenant Company @relation(fields:[tenant_id],references:[id],onDelete:Restrict,map:"stock_ledger_tenant_fk")
+}
+
+model Receipt {
+  tenant_id Int
+
+  id             Int            @id @default(autoincrement())
+  supplier_name  String
+  reference      String
+  warehouse_id   Int
+  warehouse      Warehouse      @relation(fields: [tenant_id, warehouse_id], references: [tenant_id, id], onDelete: Restrict, map: "receipts_warehouse_id_tenant_fk")
+  schedule_date  DateTime       @default(now())
+  responsible    String         @default("")
+  contact        String         @default("")
+  status         DocumentStatus @default(draft)
+  created_by     Int?
+  creator        User?          @relation(fields: [tenant_id, created_by], references: [tenant_id, id], onDelete: Restrict, map: "receipts_created_by_tenant_fk")
+  created_at     DateTime       @default(now())
+  updated_at     DateTime       @updatedAt
+
+  items          ReceiptItem[]
+
+  @@map("receipts")
+  @@index([tenant_id])
+  @@unique([tenant_id, id])
+  @@unique([tenant_id, reference])
+  tenant Company @relation(fields:[tenant_id],references:[id],onDelete:Restrict,map:"receipts_tenant_fk")
+}
+
+model ReceiptItem {
+  tenant_id Int
+
+  id                Int      @id @default(autoincrement())
+  receipt_id        Int
+  receipt           Receipt  @relation(fields: [tenant_id, receipt_id], references: [tenant_id, id], onDelete: Restrict, map: "receipt_items_receipt_id_tenant_fk")
+  product_id        Int
+  product           Product  @relation(fields: [tenant_id, product_id], references: [tenant_id, id], onDelete: Restrict, map: "receipt_items_product_id_tenant_fk")
+  location_id       Int
+  location          Location @relation(fields: [tenant_id, location_id], references: [tenant_id, id], onDelete: Restrict, map: "receipt_items_location_id_tenant_fk")
+  quantity_expected Float
+  quantity_received Float    @default(0)
+
+  @@map("receipt_items")
+  @@index([tenant_id])
+  @@unique([tenant_id, id])
+
+  tenant Company @relation(fields:[tenant_id],references:[id],onDelete:Restrict,map:"receipt_items_tenant_fk")
+}
+
+model DeliveryOrder {
+  tenant_id Int
+
+  id           Int            @id @default(autoincrement())
+  customer_ref String
+  reference    String
+  warehouse_id Int
+  warehouse    Warehouse      @relation(fields: [tenant_id, warehouse_id], references: [tenant_id, id], onDelete: Restrict, map: "delivery_orders_warehouse_id_tenant_fk")
+  schedule_date DateTime      @default(now())
+  responsible  String         @default("")
+  contact      String         @default("")
+  delivery_address String     @default("")
+  operation_type String       @default("Delivery")
+  status       DocumentStatus @default(draft)
+  created_by   Int?
+  creator      User?          @relation(fields: [tenant_id, created_by], references: [tenant_id, id], onDelete: Restrict, map: "delivery_orders_created_by_tenant_fk")
+  created_at   DateTime       @default(now())
+  updated_at   DateTime       @updatedAt
+
+  items        DeliveryItem[]
+
+  @@map("delivery_orders")
+  @@index([tenant_id])
+  @@unique([tenant_id, id])
+  @@unique([tenant_id, reference])
+  tenant Company @relation(fields:[tenant_id],references:[id],onDelete:Restrict,map:"delivery_orders_tenant_fk")
+}
+
+model DeliveryItem {
+  tenant_id Int
+
+  id                Int           @id @default(autoincrement())
+  delivery_order_id Int
+  deliveryOrder     DeliveryOrder @relation(fields: [tenant_id, delivery_order_id], references: [tenant_id, id], onDelete: Restrict, map: "delivery_items_delivery_order_id_tenant_fk")
+  product_id        Int
+  product           Product       @relation(fields: [tenant_id, product_id], references: [tenant_id, id], onDelete: Restrict, map: "delivery_items_product_id_tenant_fk")
+  location_id       Int
+  location          Location      @relation(fields: [tenant_id, location_id], references: [tenant_id, id], onDelete: Restrict, map: "delivery_items_location_id_tenant_fk")
+  quantity          Float
+
+  @@map("delivery_items")
+  @@index([tenant_id])
+  @@unique([tenant_id, id])
+
+  tenant Company @relation(fields:[tenant_id],references:[id],onDelete:Restrict,map:"delivery_items_tenant_fk")
+}
+
+model Transfer {
+  tenant_id Int
+
+  id               Int            @id @default(autoincrement())
+  from_location_id Int
+  fromLocation     Location       @relation("TransferFrom", fields: [tenant_id, from_location_id], references: [tenant_id, id], onDelete: Restrict, map: "transfers_from_location_id_tenant_fk")
+  to_location_id   Int
+  toLocation       Location       @relation("TransferTo", fields: [tenant_id, to_location_id], references: [tenant_id, id], onDelete: Restrict, map: "transfers_to_location_id_tenant_fk")
+  status           DocumentStatus @default(draft)
+  created_by       Int?
+  creator          User?          @relation(fields: [tenant_id, created_by], references: [tenant_id, id], onDelete: Restrict, map: "transfers_created_by_tenant_fk")
+  created_at       DateTime       @default(now())
+  updated_at       DateTime       @updatedAt
+
+  items            TransferItem[]
+
+  @@map("transfers")
+  @@index([tenant_id])
+  @@unique([tenant_id, id])
+
+  tenant Company @relation(fields:[tenant_id],references:[id],onDelete:Restrict,map:"transfers_tenant_fk")
+}
+
+model TransferItem {
+  tenant_id Int
+
+  id          Int      @id @default(autoincrement())
+  transfer_id Int
+  transfer    Transfer @relation(fields: [tenant_id, transfer_id], references: [tenant_id, id], onDelete: Restrict, map: "transfer_items_transfer_id_tenant_fk")
+  product_id  Int
+  product     Product  @relation(fields: [tenant_id, product_id], references: [tenant_id, id], onDelete: Restrict, map: "transfer_items_product_id_tenant_fk")
+  quantity    Float
+
+  @@map("transfer_items")
+  @@index([tenant_id])
+  @@unique([tenant_id, id])
+
+  tenant Company @relation(fields:[tenant_id],references:[id],onDelete:Restrict,map:"transfer_items_tenant_fk")
+}
+
+model Adjustment {
+  tenant_id Int
+
+  id               Int      @id @default(autoincrement())
+  product_id       Int
+  product          Product  @relation(fields: [tenant_id, product_id], references: [tenant_id, id], onDelete: Restrict, map: "adjustments_product_id_tenant_fk")
+  location_id      Int
+  location         Location @relation(fields: [tenant_id, location_id], references: [tenant_id, id], onDelete: Restrict, map: "adjustments_location_id_tenant_fk")
+  system_quantity  Float
+  counted_quantity Float
+  delta            Float
+  reason           String?
+  created_by       Int?
+  creator          User?    @relation(fields: [tenant_id, created_by], references: [tenant_id, id], onDelete: Restrict, map: "adjustments_created_by_tenant_fk")
+  created_at       DateTime @default(now())
+
+  @@map("adjustments")
+  @@index([tenant_id])
+  @@unique([tenant_id, id])
+
+  tenant Company @relation(fields:[tenant_id],references:[id],onDelete:Restrict,map:"adjustments_tenant_fk")
+}
+
+model OtpCode {
+  tenant_id Int
+
+  id         Int      @id @default(autoincrement())
+  user_id    Int
+  user       User     @relation(fields: [tenant_id, user_id], references: [tenant_id, id], onDelete: Restrict, map: "otp_codes_user_id_tenant_fk")
+  code_hash  String
+  expires_at DateTime
+  used       Boolean  @default(false)
+  created_at DateTime @default(now())
+
+  @@index([user_id])
+  @@map("otp_codes")
+  @@index([tenant_id])
+  @@unique([tenant_id, id])
+
+  tenant Company @relation(fields:[tenant_id],references:[id],onDelete:Restrict,map:"otp_codes_tenant_fk")
+}
+
+model ReferenceCounter {
+  tenant_id Int
+
+  key   String @id
+  value Int    @default(0)
+  @@map("reference_counters")
+  @@index([tenant_id])
+  @@unique([tenant_id, key])
+
+  tenant Company @relation(fields:[tenant_id],references:[id],onDelete:Restrict,map:"reference_counters_tenant_fk")
+}
+
+model RefreshSession {
+  tenant_id Int
+
+  id String @id
+  user_id Int
+  user User @relation(fields: [tenant_id, user_id], references: [tenant_id, id], onDelete: Restrict, map: "refresh_sessions_user_id_tenant_fk")
+  expires_at DateTime
+  revoked Boolean @default(false)
+  @@map("refresh_sessions")
+  @@index([tenant_id])
+  @@unique([tenant_id, id])
+
+  tenant Company @relation(fields:[tenant_id],references:[id],onDelete:Restrict,map:"refresh_sessions_tenant_fk")
+}
+
+model Company {
+  userRecords User[]
+  categoryRecords Category[]
+  productRecords Product[]
+  warehouseRecords Warehouse[]
+  locationRecords Location[]
+  stockLedgerRecords StockLedger[]
+  receiptRecords Receipt[]
+  receiptItemRecords ReceiptItem[]
+  deliveryOrderRecords DeliveryOrder[]
+  deliveryItemRecords DeliveryItem[]
+  transferRecords Transfer[]
+  transferItemRecords TransferItem[]
+  adjustmentRecords Adjustment[]
+  otpCodeRecords OtpCode[]
+  referenceCounterRecords ReferenceCounter[]
+  refreshSessionRecords RefreshSession[]
+  inviteRecords Invite[]
+  auditLogRecords AuditLog[]
+ id Int @id @default(autoincrement())
+ name String
+ short_code String @unique
+ created_at DateTime @default(now())
+ updated_at DateTime @updatedAt
+ @@map("companies")
+}
+model Invite {
+ id Int @id @default(autoincrement())
+ tenant_id Int
+ code_hash String @unique
+ email String?
+ role Role @default(staff)
+ expires_at DateTime
+ used Boolean @default(false)
+ created_by Int
+ created_at DateTime @default(now())
+ @@index([tenant_id])
+ @@unique([tenant_id,id])
+ @@map("invites")
+  tenant Company @relation(fields:[tenant_id],references:[id],onDelete:Restrict,map:"invites_tenant_fk")
+  creator User @relation(fields:[tenant_id,created_by],references:[tenant_id,id],onDelete:Restrict,map:"invites_created_by_tenant_fk")
+}
+model AuditLog {
+ id Int @id @default(autoincrement())
+ tenant_id Int
+ user_id Int?
+ action String
+ entity_type String
+ entity_id String
+ before Json?
+ after Json?
+ ip_address String?
+ created_at DateTime @default(now())
+ @@index([tenant_id,created_at])
+ @@map("audit_logs")
+  tenant Company @relation(fields:[tenant_id],references:[id],onDelete:Restrict,map:"audit_logs_tenant_fk")
+  user User? @relation(fields:[tenant_id,user_id],references:[tenant_id,id],onDelete:Restrict,map:"audit_logs_user_id_tenant_fk")
+}
